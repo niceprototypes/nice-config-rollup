@@ -1,0 +1,52 @@
+{
+  "name": "nice-config-rollup",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Shared Rollup configuration factory for the nice-* ecosystem",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src"
+  ],
+  "keywords": [
+    "nice",
+    "configuration",
+    "rollup"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/niceprototypes/nice-config-rollup.git"
+  },
+  "bugs": {
+    "url": "https://github.com/niceprototypes/nice-config-rollup/issues"
+  },
+  "homepage": "https://github.com/niceprototypes/nice-config-rollup#readme",
+  "dependencies": {
+    "@rollup/plugin-commonjs": "^25.0.7",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-typescript": "^11.1.5",
+    "rollup-plugin-dts": "^6.1.0"
+  },
+  "peerDependencies": {
+    "rollup": ">=4.0.0",
+    "tslib": ">=2.6.0",
+    "typescript": ">=6.0.0"
+  },
+  "peerDependenciesMeta": {
+    "rollup": {
+      "optional": true
+    },
+    "tslib": {
+      "optional": true
+    },
+    "typescript": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0"
+  }
+}
