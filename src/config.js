@@ -109,6 +109,11 @@ export function createConfiguration(options = {}) {
           format: 'cjs',
           sourcemap: true,
           exports: 'named',
+          // Unwrap `.default` from externals that set __esModule (e.g.
+          // styled-components' CJS build). Rollup's default ("default") treats the
+          // whole require() result as the default export, so `styled.div` is
+          // undefined when a CJS consumer (jest) loads the bundle.
+          interop: 'auto',
           ...output,
         },
         {
