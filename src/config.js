@@ -47,7 +47,7 @@ function onwarn(warning, defaultHandler) {
  * @param {Object} [options.output] - Custom output config (merged with defaults)
  * @param {Array} [options.plugins] - Override default plugins (escape hatch)
  * @param {string[]} [options.additionalExternals] - Extra packages to externalize
- * @param {string[]} [options.bundlePackages] - nice-* packages to bundle instead of externalize
+ * @param {string[]} [options.bundlePackages] - nice-* packages to bundle instead of externalize (JS and declarations)
  * @param {boolean} [options.dts=true] - Generate declaration bundle
  * @param {string} [options.dtsInput='dist/types/index.d.ts'] - Custom input for dts
  * @param {boolean} [options.clean=true] - Wipe dist/ before each build to prevent stale orphan declarations
@@ -133,7 +133,11 @@ export function createConfiguration(options = {}) {
     configs.push({
       input: dtsInput,
       output: [{ file: 'dist/index.d.ts', format: 'esm' }],
-      plugins: [dts()],
+      // Inline the declarations of bundled packages too. The JS build bundles
+      // them (see `external` above), so a consumer does not install them and an
+      // `import ... from '<bundled pkg>'` left in index.d.ts would not resolve.
+      // rollup-plugin-dts otherwise externalizes every node_modules import.
+      plugins: [dts({ includeExternal: bundlePackages })],
       onwarn,
     })
   }
