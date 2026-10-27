@@ -3,6 +3,7 @@
  */
 
 import * as fs from 'fs'
+import * as path from 'path'
 import { createExternals } from './externals.js'
 import resolve from '@rollup/plugin-node-resolve'
 import commonjs from '@rollup/plugin-commonjs'
@@ -39,6 +40,55 @@ function onwarn(warning, defaultHandler) {
 }
 
 /**
+ * Deletes every file under `root` that is not in `keep`, then the directories left empty.
+ */
+function pruneDirectory(root, keep) {
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const full = path.join(root, entry.name)
+    if (entry.isDirectory()) {
+      pruneDirectory(full, keep)
+      if (fs.readdirSync(full).length === 0) fs.rmdirSync(full)
+    } else if (!keep.has(full)) {
+      fs.rmSync(full, { force: true })
+    }
+  }
+}
+
+/**
+ * Removes the files in `dir` that a build did not write, once all of its outputs are written.
+ *
+ * dist/ is never emptied, so a watcher stopped mid-build, or a dependent built in parallel, still
+ * finds the previous build. Stale files from an earlier file layout (single-file ↔ folder, a
+ * rename) still go: rollup-plugin-dts would otherwise bundle a stale `Button.d.ts` ahead of the
+ * new `Button/index.d.ts`. The prune runs in the last output's `writeBundle`, which rollup awaits
+ * before the next config (the declaration bundle) starts. A failed build writes nothing and
+ * prunes nothing.
+ *
+ * @param {Object} options
+ * @param {string} options.dir - The output directory
+ * @param {number} options.outputs - How many outputs the config writes
+ * @param {string[]} options.keep - Files another config writes into `dir` (the declaration bundle)
+ */
+function pruneStaleOutput({ dir, outputs, keep }) {
+  let written = new Set()
+  let writes = 0
+  return {
+    name: 'nice-prune-stale-output',
+    buildStart() {
+      written = new Set()
+      writes = 0
+    },
+    writeBundle(outputOptions, bundle) {
+      const outputDir = path.resolve(outputOptions.dir ?? path.dirname(outputOptions.file))
+      for (const fileName of Object.keys(bundle)) written.add(path.resolve(outputDir, fileName))
+      writes += 1
+      if (writes < outputs || !fs.existsSync(dir)) return
+      pruneDirectory(path.resolve(dir), new Set([...written, ...keep.map((file) => path.resolve(file))]))
+    },
+  }
+}
+
+/**
  * Creates a standard rollup configuration for nice-* packages
  *
  * @param {Object} options
@@ -50,7 +100,7 @@ function onwarn(warning, defaultHandler) {
  * @param {string[]} [options.bundlePackages] - nice-* packages to bundle instead of externalize (JS and declarations)
  * @param {boolean} [options.dts=true] - Generate declaration bundle
  * @param {string} [options.dtsInput='dist/types/index.d.ts'] - Custom input for dts
- * @param {boolean} [options.clean=true] - Wipe dist/ before each build to prevent stale orphan declarations
+ * @param {boolean} [options.clean=true] - After each build, delete the files in dist/ it did not write (stale orphan declarations); dist/ is never emptied
  * @returns {Object[]} Rollup configuration array
  */
 export function createConfiguration(options = {}) {
@@ -66,12 +116,6 @@ export function createConfiguration(options = {}) {
     clean = true,
   } = options
 
-  // Clean dist/ before each build. rollup-plugin-dts will otherwise re-bundle
-  // d.ts files left over from a prior file layout (single-file ↔ folder, rename).
-  if (clean) {
-    fs.rmSync('dist', { recursive: true, force: true })
-  }
-
   const defaultPlugins = [
     resolve({ browser: true }),
     commonjs(),
@@ -85,6 +129,30 @@ export function createConfiguration(options = {}) {
   // Always use createExternals — it reads peerDependencies from the consumer's
   // package.json, replacing the role formerly played by rollup-plugin-peer-deps-external.
   const external = createExternals({ additional: additionalExternals, bundle: bundlePackages })
+
+  const outputs = [
+    {
+      file: 'dist/index.js',
+      format: 'cjs',
+      sourcemap: true,
+      exports: 'named',
+      // Unwrap `.default` from externals that set __esModule (e.g.
+      // styled-components' CJS build). Rollup's default ("default") treats the
+      // whole require() result as the default export, so `styled.div` is
+      // undefined when a CJS consumer (jest) loads the bundle.
+      interop: 'auto',
+      ...output,
+    },
+    {
+      file: 'dist/index.esm.js',
+      format: 'esm',
+      sourcemap: true,
+      exports: 'named',
+      ...output,
+    },
+  ]
+  const dtsOutput = 'dist/index.d.ts'
+  const prune = clean ? [pruneStaleOutput({ dir: 'dist', outputs: outputs.length, keep: includeDts ? [dtsOutput] : [] })] : []
 
   const configs = [
     {
@@ -103,28 +171,8 @@ export function createConfiguration(options = {}) {
           interval: 100
         }
       },
-      output: [
-        {
-          file: 'dist/index.js',
-          format: 'cjs',
-          sourcemap: true,
-          exports: 'named',
-          // Unwrap `.default` from externals that set __esModule (e.g.
-          // styled-components' CJS build). Rollup's default ("default") treats the
-          // whole require() result as the default export, so `styled.div` is
-          // undefined when a CJS consumer (jest) loads the bundle.
-          interop: 'auto',
-          ...output,
-        },
-        {
-          file: 'dist/index.esm.js',
-          format: 'esm',
-          sourcemap: true,
-          exports: 'named',
-          ...output,
-        },
-      ],
-      plugins: plugins ?? defaultPlugins,
+      output: outputs,
+      plugins: [...(plugins ?? defaultPlugins), ...prune],
       external,
     },
   ]
@@ -132,7 +180,7 @@ export function createConfiguration(options = {}) {
   if (includeDts) {
     configs.push({
       input: dtsInput,
-      output: [{ file: 'dist/index.d.ts', format: 'esm' }],
+      output: [{ file: dtsOutput, format: 'esm' }],
       // Inline the declarations of bundled packages too. The JS build bundles
       // them (see `external` above), so a consumer does not install them and an
       // `import ... from '<bundled pkg>'` left in index.d.ts would not resolve.
