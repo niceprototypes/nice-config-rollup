@@ -1,3 +1,12 @@
+**This repository is no longer maintained.** Development continues in the Nice UI monorepo.
+
+- New location: https://github.com/niceprototypes/nice-ux/tree/main/packages/config-rollup
+- New npm package: `@niceprototypes/config-rollup`
+
+---
+
+# Legacy documentation
+
 # nice-config-rollup
 
 Shared Rollup configuration factory for the `nice-*` ecosystem. Split out of
